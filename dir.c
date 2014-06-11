@@ -1608,10 +1608,43 @@ int remove_dir_recursively(struct strbuf *path, int flag)
 	return remove_dir_recurse(path, flag, NULL);
 }
 
+static void add_git_dir_exclude(struct dir_struct *dir)
+{
+	const char *r_git, *gitdir = get_git_dir();
+	char *n_git;
+	int len;
+
+	r_git = real_path(absolute_path(gitdir));
+	n_git = xmalloc(strlen(r_git) + 1 + 1);
+	normalize_path_copy(n_git, r_git);
+	len = strlen(n_git);
+
+	/* only add it if GIT_DIR does not end with '.git' or '/.git' */
+	if (!(len >= 4 && !strcmp(n_git + len - 4, ".git") &&
+	      (len == 4 || n_git[len - 5] == '/'))) {
+		const char *worktree = get_git_work_tree();
+
+		if (!worktree ||
+		    dir_inside_of(n_git, worktree) >= 0) {
+			struct exclude_list *el = add_exclude_list(dir, EXC_CMDL,
+							"GIT_DIR setup");
+			char *reldir = worktree ? n_git + strlen(worktree) : n_git;
+
+			/* append a trailing slash to exclude directories only */
+			n_git[len] = '/';
+			n_git[len + 1] = '\0';
+			add_exclude(reldir, "", 0, el, 0);
+		}
+	}
+	free(n_git);
+}
+
 void setup_standard_excludes(struct dir_struct *dir)
 {
 	const char *path;
 	char *xdg_path;
+
+	add_git_dir_exclude(dir);
 
 	dir->exclude_per_dir = ".gitignore";
 	path = git_path("info/exclude");
